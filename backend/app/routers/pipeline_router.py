@@ -39,12 +39,16 @@ class AggregationPayload(BaseModel):
     dim_field: str = Field(..., min_length=1)
     metric_field: str = "count"
     agg_func: str = "count"
+    source_batch: str | None = None
+    refresh_token: str | None = None
+    fail_after: int | None = Field(default=None, ge=0)
 
 
 class ExportPayload(BaseModel):
     view_name: str = Field(..., min_length=1)
     export_format: str = "csv"
     filters: dict[str, str] | None = None
+    request_id: str | None = None
 
 
 class WatermarkPayload(BaseModel):
@@ -110,13 +114,29 @@ def pipeline_validate_entities(batch_no: str | None = Query(default=None)) -> di
 @router.post("/aggregation/refresh")
 def pipeline_refresh_aggregation(payload: AggregationPayload) -> dict[str, Any]:
     return pipeline.refresh_aggregation(
-        payload.view_name, payload.dim_field, payload.metric_field, payload.agg_func
+        payload.view_name,
+        payload.dim_field,
+        payload.metric_field,
+        payload.agg_func,
+        source_batch=payload.source_batch,
+        refresh_token=payload.refresh_token,
+        fail_after=payload.fail_after,
     )
+
+
+@router.get("/aggregation/receipt")
+def pipeline_aggregation_receipt(view_name: str = Query(..., min_length=1)) -> dict[str, Any]:
+    receipt = pipeline.aggregation_receipt(view_name)
+    if receipt is None:
+        return {"ok": False, "reason": "view_not_found", "view_name": view_name, "receipt": None}
+    return {"ok": True, "view_name": view_name, "receipt": receipt}
 
 
 @router.post("/export/build")
 def pipeline_build_export(payload: ExportPayload) -> dict[str, Any]:
-    return pipeline.build_export(payload.view_name, payload.export_format, payload.filters)
+    return pipeline.build_export(
+        payload.view_name, payload.export_format, payload.filters, payload.request_id
+    )
 
 
 @router.post("/watermark/advance")
